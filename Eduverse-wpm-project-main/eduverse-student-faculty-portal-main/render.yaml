@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: eduverse-wpm-project
+    env: node
+    plan: free
+    rootDir: eduverse-student-faculty-portal-main
+    buildCommand: npm install --legacy-peer-deps && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_CONNECTION_STRING
+        sync: false
+
