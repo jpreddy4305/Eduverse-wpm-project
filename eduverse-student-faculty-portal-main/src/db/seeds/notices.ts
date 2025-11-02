@@ -1,7 +1,8 @@
-import { db } from '@/db';
-import { notices } from '@/db/schema';
+import connectDB from '@/db';
+import { Notice } from '@/db/schema';
 
 async function main() {
+    await connectDB();
     const sampleNotices = [
         {
             title: 'Mid-Term Examination Schedule - Fall 2024',
@@ -59,11 +60,13 @@ async function main() {
         },
     ];
 
-    await db.insert(notices).values(sampleNotices);
+    await Notice.insertMany(sampleNotices);
     
     console.log('✅ Notices seeder completed successfully');
+    process.exit(0);
 }
 
 main().catch((error) => {
     console.error('❌ Seeder failed:', error);
+    process.exit(1);
 });

@@ -1,13 +1,49 @@
+import mongoose from 'mongoose';
 
-import { drizzle } from 'drizzle-orm/libsql';
-import { createClient } from '@libsql/client';
-import * as schema from '@/db/schema';
+const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGODB_CONNECTION_STRING;
 
-const client = createClient({
-  url: process.env.TURSO_CONNECTION_URL!,
-  authToken: process.env.TURSO_AUTH_TOKEN!,
-});
+if (!MONGODB_URI) {
+  throw new Error('Please define the MONGODB_URI or MONGODB_CONNECTION_STRING environment variable inside .env');
+}
 
-export const db = drizzle(client, { schema });
+interface MongooseCache {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+}
 
-export type Database = typeof db;
+declare global {
+  var mongoose: MongooseCache | undefined;
+}
+
+let cached: MongooseCache = global.mongoose || { conn: null, promise: null };
+
+if (!global.mongoose) {
+  global.mongoose = cached;
+}
+
+async function connectDB() {
+  if (cached.conn) {
+    return cached.conn;
+  }
+
+  if (!cached.promise) {
+    const opts = {
+      bufferCommands: false,
+    };
+
+    cached.promise = mongoose.connect(MONGODB_URI!, opts).then((mongoose) => {
+      return mongoose;
+    });
+  }
+
+  try {
+    cached.conn = await cached.promise;
+  } catch (e) {
+    cached.promise = null;
+    throw e;
+  }
+
+  return cached.conn;
+}
+
+export default connectDB;

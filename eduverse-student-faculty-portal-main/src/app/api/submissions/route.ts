@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { submissions } from '@/db/schema';
-import { eq, like, and, or, desc } from 'drizzle-orm';
+import connectDB from '@/db';
+import { Submission } from '@/db/schema';
 
 export async function GET(request: NextRequest) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
     // Single submission by ID
     if (id) {
-      if (!id || isNaN(parseInt(id))) {
+      if (!id) {
         return NextResponse.json(
           { 
             error: "Valid ID is required",
@@ -20,19 +20,16 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const submission = await db.select()
-        .from(submissions)
-        .where(eq(submissions.id, parseInt(id)))
-        .limit(1);
+      const submission = await Submission.findById(id);
 
-      if (submission.length === 0) {
+      if (!submission) {
         return NextResponse.json(
           { error: 'Submission not found' },
           { status: 404 }
         );
       }
 
-      return NextResponse.json(submission[0], { status: 200 });
+      return NextResponse.json(submission, { status: 200 });
     }
 
     // List submissions with pagination, filtering, and search
@@ -43,35 +40,30 @@ export async function GET(request: NextRequest) {
     const studentId = searchParams.get('studentId');
     const status = searchParams.get('status');
 
-    let query = db.select().from(submissions);
-
-    // Build filter conditions
-    const conditions = [];
+    // Build filter query
+    const filter: any = {};
 
     if (assignmentId) {
-      conditions.push(eq(submissions.assignmentId, parseInt(assignmentId)));
+      filter.assignmentId = parseInt(assignmentId);
     }
 
     if (studentId) {
-      conditions.push(eq(submissions.studentId, studentId));
+      filter.studentId = studentId;
     }
 
     if (status) {
-      conditions.push(eq(submissions.status, status));
+      filter.status = status;
     }
 
     if (search) {
-      conditions.push(like(submissions.studentName, `%${search}%`));
+      filter.studentName = { $regex: search, $options: 'i' };
     }
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-
-    const results = await query
-      .orderBy(desc(submissions.submittedDate))
+    const results = await Submission.find(filter)
+      .sort({ submittedDate: -1 })
       .limit(limit)
-      .offset(offset);
+      .skip(offset)
+      .lean();
 
     return NextResponse.json(results, { status: 200 });
 
@@ -86,6 +78,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await connectDB();
     const body = await request.json();
     const { 
       assignmentId, 
@@ -183,11 +176,9 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString()
     };
 
-    const newSubmission = await db.insert(submissions)
-      .values(sanitizedData)
-      .returning();
+    const newSubmission = await Submission.create(sanitizedData);
 
-    return NextResponse.json(newSubmission[0], { status: 201 });
+    return NextResponse.json(newSubmission, { status: 201 });
 
   } catch (error) {
     console.error('POST error:', error);
@@ -200,10 +191,11 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
-    if (!id || isNaN(parseInt(id))) {
+    if (!id) {
       return NextResponse.json(
         { 
           error: "Valid ID is required",
@@ -214,12 +206,9 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check if submission exists
-    const existingSubmission = await db.select()
-      .from(submissions)
-      .where(eq(submissions.id, parseInt(id)))
-      .limit(1);
+    const existingSubmission = await Submission.findById(id);
 
-    if (existingSubmission.length === 0) {
+    if (!existingSubmission) {
       return NextResponse.json(
         { error: 'Submission not found' },
         { status: 404 }
@@ -274,12 +263,9 @@ export async function PUT(request: NextRequest) {
       updates.status = status.trim();
     }
 
-    const updated = await db.update(submissions)
-      .set(updates)
-      .where(eq(submissions.id, parseInt(id)))
-      .returning();
+    const updated = await Submission.findByIdAndUpdate(id, updates, { new: true });
 
-    return NextResponse.json(updated[0], { status: 200 });
+    return NextResponse.json(updated, { status: 200 });
 
   } catch (error) {
     console.error('PUT error:', error);
@@ -292,10 +278,11 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
-    if (!id || isNaN(parseInt(id))) {
+    if (!id) {
       return NextResponse.json(
         { 
           error: "Valid ID is required",
@@ -306,30 +293,24 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if submission exists
-    const existingSubmission = await db.select()
-      .from(submissions)
-      .where(eq(submissions.id, parseInt(id)))
-      .limit(1);
+    const existingSubmission = await Submission.findById(id);
 
-    if (existingSubmission.length === 0) {
+    if (!existingSubmission) {
       return NextResponse.json(
         { error: 'Submission not found' },
         { status: 404 }
       );
     }
 
-    const deleted = await db.delete(submissions)
-      .where(eq(submissions.id, parseInt(id)))
-      .returning();
+    const deleted = await Submission.findByIdAndDelete(id);
 
     return NextResponse.json(
       { 
         message: 'Submission deleted successfully',
-        submission: deleted[0]
+        submission: deleted
       },
       { status: 200 }
     );
-
   } catch (error) {
     console.error('DELETE error:', error);
     return NextResponse.json(

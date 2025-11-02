@@ -1,7 +1,8 @@
-import { db } from '@/db';
-import { submissions } from '@/db/schema';
+import connectDB from '@/db';
+import { Submission } from '@/db/schema';
 
 async function main() {
+    await connectDB();
     const sampleSubmissions = [
         {
             assignmentId: 1,
@@ -49,11 +50,13 @@ async function main() {
         },
     ];
 
-    await db.insert(submissions).values(sampleSubmissions);
+    await Submission.insertMany(sampleSubmissions);
     
     console.log('✅ Submissions seeder completed successfully');
+    process.exit(0);
 }
 
 main().catch((error) => {
     console.error('❌ Seeder failed:', error);
+    process.exit(1);
 });

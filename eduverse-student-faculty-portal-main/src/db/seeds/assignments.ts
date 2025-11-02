@@ -1,7 +1,8 @@
-import { db } from '@/db';
-import { assignments } from '@/db/schema';
+import connectDB from '@/db';
+import { Assignment } from '@/db/schema';
 
 async function main() {
+    await connectDB();
     const sampleAssignments = [
         {
             title: 'Database Design Project - E-Commerce System',
@@ -60,11 +61,13 @@ async function main() {
         },
     ];
 
-    await db.insert(assignments).values(sampleAssignments);
+    await Assignment.insertMany(sampleAssignments);
     
     console.log('✅ Assignments seeder completed successfully');
+    process.exit(0);
 }
 
 main().catch((error) => {
     console.error('❌ Seeder failed:', error);
+    process.exit(1);
 });

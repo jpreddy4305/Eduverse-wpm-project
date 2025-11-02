@@ -1,36 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { notices } from '@/db/schema';
-import { eq, like, and, or, desc } from 'drizzle-orm';
+import connectDB from '@/db';
+import { Notice } from '@/db/schema';
 
 export async function GET(request: NextRequest) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
     // Single notice by ID
     if (id) {
-      if (!id || isNaN(parseInt(id))) {
+      if (!id) {
         return NextResponse.json(
           { error: 'Valid ID is required', code: 'INVALID_ID' },
           { status: 400 }
         );
       }
 
-      const notice = await db
-        .select()
-        .from(notices)
-        .where(eq(notices.id, parseInt(id)))
-        .limit(1);
+      const notice = await Notice.findById(id);
 
-      if (notice.length === 0) {
+      if (!notice) {
         return NextResponse.json(
           { error: 'Notice not found', code: 'NOT_FOUND' },
           { status: 404 }
         );
       }
 
-      return NextResponse.json(notice[0], { status: 200 });
+      return NextResponse.json(notice, { status: 200 });
     }
 
     // List notices with filters and pagination
@@ -41,42 +37,33 @@ export async function GET(request: NextRequest) {
     const department = searchParams.get('department');
     const authorRole = searchParams.get('authorRole');
 
-    let query = db.select().from(notices);
-
-    // Build conditions array
-    const conditions = [];
+    // Build filter query
+    const filter: any = {};
 
     if (search) {
-      conditions.push(
-        or(
-          like(notices.title, `%${search}%`),
-          like(notices.content, `%${search}%`)
-        )
-      );
+      filter.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { content: { $regex: search, $options: 'i' } }
+      ];
     }
 
     if (priority) {
-      conditions.push(eq(notices.priority, priority));
+      filter.priority = priority;
     }
 
     if (department) {
-      conditions.push(eq(notices.department, department));
+      filter.department = department;
     }
 
     if (authorRole) {
-      conditions.push(eq(notices.authorRole, authorRole));
+      filter.authorRole = authorRole;
     }
 
-    // Apply all conditions
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-
-    // Apply sorting, pagination
-    const results = await query
-      .orderBy(desc(notices.createdAt))
+    const results = await Notice.find(filter)
+      .sort({ createdAt: -1 })
       .limit(limit)
-      .offset(offset);
+      .skip(offset)
+      .lean();
 
     return NextResponse.json(results, { status: 200 });
   } catch (error) {
@@ -90,6 +77,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await connectDB();
     const body = await request.json();
     const { title, content, author, authorRole, department, priority } = body;
 
@@ -169,12 +157,9 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString(),
     };
 
-    const newNotice = await db
-      .insert(notices)
-      .values(sanitizedData)
-      .returning();
+    const newNotice = await Notice.create(sanitizedData);
 
-    return NextResponse.json(newNotice[0], { status: 201 });
+    return NextResponse.json(newNotice, { status: 201 });
   } catch (error) {
     console.error('POST error:', error);
     return NextResponse.json(
@@ -186,10 +171,11 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
-    if (!id || isNaN(parseInt(id))) {
+    if (!id) {
       return NextResponse.json(
         { error: 'Valid ID is required', code: 'INVALID_ID' },
         { status: 400 }
@@ -197,13 +183,9 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check if notice exists
-    const existing = await db
-      .select()
-      .from(notices)
-      .where(eq(notices.id, parseInt(id)))
-      .limit(1);
+    const existing = await Notice.findById(id);
 
-    if (existing.length === 0) {
+    if (!existing) {
       return NextResponse.json(
         { error: 'Notice not found', code: 'NOT_FOUND' },
         { status: 404 }
@@ -262,13 +244,9 @@ export async function PUT(request: NextRequest) {
       updates.priority = priority.trim();
     }
 
-    const updated = await db
-      .update(notices)
-      .set(updates)
-      .where(eq(notices.id, parseInt(id)))
-      .returning();
+    const updated = await Notice.findByIdAndUpdate(id, updates, { new: true });
 
-    return NextResponse.json(updated[0], { status: 200 });
+    return NextResponse.json(updated, { status: 200 });
   } catch (error) {
     console.error('PUT error:', error);
     return NextResponse.json(
@@ -280,10 +258,11 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
-    if (!id || isNaN(parseInt(id))) {
+    if (!id) {
       return NextResponse.json(
         { error: 'Valid ID is required', code: 'INVALID_ID' },
         { status: 400 }
@@ -291,28 +270,21 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if notice exists
-    const existing = await db
-      .select()
-      .from(notices)
-      .where(eq(notices.id, parseInt(id)))
-      .limit(1);
+    const existing = await Notice.findById(id);
 
-    if (existing.length === 0) {
+    if (!existing) {
       return NextResponse.json(
         { error: 'Notice not found', code: 'NOT_FOUND' },
         { status: 404 }
       );
     }
 
-    const deleted = await db
-      .delete(notices)
-      .where(eq(notices.id, parseInt(id)))
-      .returning();
+    const deleted = await Notice.findByIdAndDelete(id);
 
     return NextResponse.json(
       {
         message: 'Notice deleted successfully',
-        notice: deleted[0],
+        notice: deleted,
       },
       { status: 200 }
     );

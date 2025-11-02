@@ -1,7 +1,8 @@
-import { db } from '@/db';
-import { resources } from '@/db/schema';
+import connectDB from '@/db';
+import { Resource } from '@/db/schema';
 
 async function main() {
+    await connectDB();
     const sampleResources = [
         {
             title: 'DBMS Lecture Notes - Chapter 5: Normalization',
@@ -55,11 +56,13 @@ async function main() {
         },
     ];
 
-    await db.insert(resources).values(sampleResources);
+    await Resource.insertMany(sampleResources);
     
     console.log('✅ Resources seeder completed successfully');
+    process.exit(0);
 }
 
 main().catch((error) => {
     console.error('❌ Seeder failed:', error);
+    process.exit(1);
 });

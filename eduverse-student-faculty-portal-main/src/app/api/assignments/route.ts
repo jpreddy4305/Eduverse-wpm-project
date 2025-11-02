@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { assignments } from '@/db/schema';
-import { eq, like, and, or, asc } from 'drizzle-orm';
+import connectDB from '@/db';
+import { Assignment } from '@/db/schema';
 
 export async function GET(request: NextRequest) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
     // Single assignment fetch
     if (id) {
-      if (!id || isNaN(parseInt(id))) {
+      if (!id) {
         return NextResponse.json(
           { 
             error: "Valid ID is required",
@@ -20,19 +20,16 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const assignment = await db.select()
-        .from(assignments)
-        .where(eq(assignments.id, parseInt(id)))
-        .limit(1);
+      const assignment = await Assignment.findById(id);
 
-      if (assignment.length === 0) {
+      if (!assignment) {
         return NextResponse.json(
           { error: 'Assignment not found' },
           { status: 404 }
         );
       }
 
-      return NextResponse.json(assignment[0], { status: 200 });
+      return NextResponse.json(assignment, { status: 200 });
     }
 
     // List assignments with filters
@@ -43,43 +40,36 @@ export async function GET(request: NextRequest) {
     const department = searchParams.get('department');
     const year = searchParams.get('year');
 
-    let query = db.select().from(assignments);
-
-    // Build WHERE conditions
-    const conditions = [];
+    // Build filter query
+    const filter: any = {};
 
     if (search) {
-      conditions.push(
-        or(
-          like(assignments.title, `%${search}%`),
-          like(assignments.description, `%${search}%`)
-        )
-      );
+      filter.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
     }
 
     if (subject) {
-      conditions.push(eq(assignments.subject, subject));
+      filter.subject = subject;
     }
 
     if (department) {
-      conditions.push(eq(assignments.department, department));
+      filter.department = department;
     }
 
     if (year) {
       const yearInt = parseInt(year);
       if (!isNaN(yearInt)) {
-        conditions.push(eq(assignments.year, yearInt));
+        filter.year = yearInt;
       }
     }
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-
-    const results = await query
-      .orderBy(asc(assignments.dueDate))
+    const results = await Assignment.find(filter)
+      .sort({ dueDate: 1 })
       .limit(limit)
-      .offset(offset);
+      .skip(offset)
+      .lean();
 
     return NextResponse.json(results, { status: 200 });
   } catch (error) {
@@ -93,6 +83,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await connectDB();
     const body = await request.json();
     const { 
       title, 
@@ -223,11 +214,9 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString()
     };
 
-    const newAssignment = await db.insert(assignments)
-      .values(sanitizedData)
-      .returning();
+    const newAssignment = await Assignment.create(sanitizedData);
 
-    return NextResponse.json(newAssignment[0], { status: 201 });
+    return NextResponse.json(newAssignment, { status: 201 });
   } catch (error) {
     console.error('POST error:', error);
     return NextResponse.json(
@@ -239,10 +228,11 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
-    if (!id || isNaN(parseInt(id))) {
+    if (!id) {
       return NextResponse.json(
         { 
           error: "Valid ID is required",
@@ -253,12 +243,9 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check if assignment exists
-    const existing = await db.select()
-      .from(assignments)
-      .where(eq(assignments.id, parseInt(id)))
-      .limit(1);
+    const existing = await Assignment.findById(id);
 
-    if (existing.length === 0) {
+    if (!existing) {
       return NextResponse.json(
         { error: 'Assignment not found' },
         { status: 404 }
@@ -321,12 +308,9 @@ export async function PUT(request: NextRequest) {
       updates.year = yearInt;
     }
 
-    const updated = await db.update(assignments)
-      .set(updates)
-      .where(eq(assignments.id, parseInt(id)))
-      .returning();
+    const updated = await Assignment.findByIdAndUpdate(id, updates, { new: true });
 
-    return NextResponse.json(updated[0], { status: 200 });
+    return NextResponse.json(updated, { status: 200 });
   } catch (error) {
     console.error('PUT error:', error);
     return NextResponse.json(
@@ -338,10 +322,11 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
-    if (!id || isNaN(parseInt(id))) {
+    if (!id) {
       return NextResponse.json(
         { 
           error: "Valid ID is required",
@@ -352,26 +337,21 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if assignment exists
-    const existing = await db.select()
-      .from(assignments)
-      .where(eq(assignments.id, parseInt(id)))
-      .limit(1);
+    const existing = await Assignment.findById(id);
 
-    if (existing.length === 0) {
+    if (!existing) {
       return NextResponse.json(
         { error: 'Assignment not found' },
         { status: 404 }
       );
     }
 
-    const deleted = await db.delete(assignments)
-      .where(eq(assignments.id, parseInt(id)))
-      .returning();
+    const deleted = await Assignment.findByIdAndDelete(id);
 
     return NextResponse.json(
       { 
         message: 'Assignment deleted successfully',
-        assignment: deleted[0]
+        assignment: deleted
       },
       { status: 200 }
     );

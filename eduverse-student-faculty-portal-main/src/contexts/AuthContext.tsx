@@ -36,52 +36,6 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users for demo
-const MOCK_USERS: (User & { password: string })[] = [
-  {
-    id: '1',
-    name: 'John Smith',
-    email: 'john.student@eduverse.edu',
-    password: 'password123',
-    role: 'student',
-    department: 'Computer Science',
-    year: 3,
-    enrollmentNumber: 'CS2021001',
-    profileImage: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400'
-  },
-  {
-    id: '2',
-    name: 'Dr. Sarah Johnson',
-    email: 'sarah.faculty@eduverse.edu',
-    password: 'password123',
-    role: 'faculty',
-    department: 'Computer Science',
-    employeeId: 'FAC2019045',
-    profileImage: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400'
-  },
-  {
-    id: '3',
-    name: 'Admin User',
-    email: 'admin@eduverse.edu',
-    password: 'admin123',
-    role: 'admin',
-    department: 'Administration',
-    employeeId: 'ADM2020001',
-    profileImage: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400'
-  },
-  {
-    id: '4',
-    name: 'Emily Davis',
-    email: 'emily.student@eduverse.edu',
-    password: 'password123',
-    role: 'student',
-    department: 'Electrical Engineering',
-    year: 2,
-    enrollmentNumber: 'EE2022015',
-    profileImage: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400'
-  }
-];
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,51 +54,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    const foundUser = MOCK_USERS.find(
-      u => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    );
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (foundUser) {
-      const { password: _, ...userWithoutPassword } = foundUser;
-      setUser(userWithoutPassword);
-      localStorage.setItem('eduverse_user', JSON.stringify(userWithoutPassword));
-      localStorage.setItem('eduverse_token', 'mock-jwt-token-' + foundUser.id);
-      return { success: true };
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setUser(data.user);
+        localStorage.setItem('eduverse_user', JSON.stringify(data.user));
+        localStorage.setItem('eduverse_token', 'auth-token-' + data.user.id);
+        return { success: true };
+      }
+
+      return { success: false, error: data.error || 'Login failed' };
+    } catch (error) {
+      console.error('Login error:', error);
+      return { success: false, error: 'Network error. Please try again.' };
     }
-
-    return { success: false, error: 'Invalid email or password' };
   };
 
   const register = async (data: RegisterData) => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 800));
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: data.name,
+          email: data.email,
+          password: data.password,
+          role: data.role,
+          department: data.department,
+          year: data.year,
+        }),
+      });
 
-    // Check if user already exists
-    const existingUser = MOCK_USERS.find(u => u.email.toLowerCase() === data.email.toLowerCase());
-    if (existingUser) {
-      return { success: false, error: 'User with this email already exists' };
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        // Convert MongoDB user to our User type (add id from _id)
+        const newUser: User = {
+          id: result.user._id || result.user.id,
+          name: result.user.name,
+          email: result.user.email,
+          role: result.user.role,
+          department: result.user.department,
+          year: result.user.year,
+          enrollmentNumber: result.user.enrollmentNumber,
+          employeeId: result.user.employeeId,
+          profileImage: result.user.profileImage,
+        };
+
+        setUser(newUser);
+        localStorage.setItem('eduverse_user', JSON.stringify(newUser));
+        localStorage.setItem('eduverse_token', 'auth-token-' + newUser.id);
+        return { success: true };
+      }
+
+      return { success: false, error: result.error || 'Registration failed' };
+    } catch (error) {
+      console.error('Registration error:', error);
+      return { success: false, error: 'Network error. Please try again.' };
     }
-
-    // Create new user
-    const newUser: User = {
-      id: String(MOCK_USERS.length + 1),
-      name: data.name,
-      email: data.email,
-      role: data.role,
-      department: data.department,
-      year: data.year,
-      enrollmentNumber: data.role === 'student' ? `${data.department?.substring(0, 2).toUpperCase()}${new Date().getFullYear()}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}` : undefined,
-      employeeId: data.role !== 'student' ? `${data.role.toUpperCase()}${new Date().getFullYear()}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}` : undefined,
-    };
-
-    setUser(newUser);
-    localStorage.setItem('eduverse_user', JSON.stringify(newUser));
-    localStorage.setItem('eduverse_token', 'mock-jwt-token-' + newUser.id);
-
-    return { success: true };
   };
 
   const logout = () => {

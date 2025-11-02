@@ -1,7 +1,8 @@
-import { db } from '@/db';
-import { timetable } from '@/db/schema';
+import connectDB from '@/db';
+import { Timetable } from '@/db/schema';
 
 async function main() {
+    await connectDB();
     const sampleTimetable = [
         // Monday - 4 entries
         {
@@ -196,11 +197,13 @@ async function main() {
         },
     ];
 
-    await db.insert(timetable).values(sampleTimetable);
+    await Timetable.insertMany(sampleTimetable);
     
     console.log('✅ Timetable seeder completed successfully');
+    process.exit(0);
 }
 
 main().catch((error) => {
     console.error('❌ Seeder failed:', error);
+    process.exit(1);
 });

@@ -46,13 +46,28 @@ export default function AssignmentsPage() {
   });
 
   useEffect(() => {
-    fetchAssignments();
-  }, []);
+    if (user) {
+      fetchAssignments();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const fetchAssignments = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/assignments');
+      // For students, filter by department and year
+      let url = '/api/assignments';
+      if (user?.role === 'student' && user.department) {
+        const params = new URLSearchParams({
+          department: user.department,
+        });
+        if (user.year) {
+          params.append('year', String(user.year));
+        }
+        url = `/api/assignments?${params.toString()}`;
+      }
+      
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to fetch assignments');
       }
@@ -129,7 +144,7 @@ export default function AssignmentsPage() {
           facultyName: user?.name || 'Faculty Member',
           dueDate: newAssignment.dueDate,
           totalMarks: parseInt(newAssignment.totalMarks),
-          department: 'Computer Science',
+          department: user?.department || 'Computer Science',
           year: parseInt(newAssignment.year),
         }),
       });

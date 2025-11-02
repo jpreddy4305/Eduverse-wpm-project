@@ -1,35 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { timetable } from '@/db/schema';
-import { eq, like, and, or, desc, asc } from 'drizzle-orm';
+import connectDB from '@/db';
+import { Timetable } from '@/db/schema';
 
 export async function GET(request: NextRequest) {
   try {
+    await connectDB();
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
 
     // Single record fetch
     if (id) {
-      if (!id || isNaN(parseInt(id))) {
+      if (!id) {
         return NextResponse.json({ 
           error: "Valid ID is required",
           code: "INVALID_ID" 
         }, { status: 400 });
       }
 
-      const record = await db.select()
-        .from(timetable)
-        .where(eq(timetable.id, parseInt(id)))
-        .limit(1);
+      const record = await Timetable.findById(id);
 
-      if (record.length === 0) {
+      if (!record) {
         return NextResponse.json({ 
           error: 'Timetable entry not found',
           code: "NOT_FOUND" 
         }, { status: 404 });
       }
 
-      return NextResponse.json(record[0], { status: 200 });
+      return NextResponse.json(record, { status: 200 });
     }
 
     // List with pagination, search, and filters
@@ -39,50 +36,44 @@ export async function GET(request: NextRequest) {
     const dayFilter = searchParams.get('day');
     const typeFilter = searchParams.get('type');
 
-    let query = db.select().from(timetable);
-
-    // Build WHERE conditions
-    const conditions = [];
+    // Build filter query
+    const filter: any = {};
 
     if (search) {
-      conditions.push(
-        or(
-          like(timetable.subject, `%${search}%`),
-          like(timetable.faculty, `%${search}%`),
-          like(timetable.room, `%${search}%`)
-        )
-      );
+      filter.$or = [
+        { subject: { $regex: search, $options: 'i' } },
+        { faculty: { $regex: search, $options: 'i' } },
+        { room: { $regex: search, $options: 'i' } }
+      ];
     }
 
     if (dayFilter) {
-      conditions.push(eq(timetable.day, dayFilter));
+      filter.day = dayFilter;
     }
 
     if (typeFilter) {
-      conditions.push(eq(timetable.type, typeFilter));
-    }
-
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      filter.type = typeFilter;
     }
 
     // Sort by day and time
-    const results = await query
-      .orderBy(asc(timetable.day), asc(timetable.time))
+    const results = await Timetable.find(filter)
+      .sort({ day: 1, time: 1 })
       .limit(limit)
-      .offset(offset);
+      .skip(offset)
+      .lean();
 
     return NextResponse.json(results, { status: 200 });
   } catch (error) {
     console.error('GET error:', error);
     return NextResponse.json({ 
-      error: 'Internal server error: ' + error.message 
+      error: 'Internal server error: ' + (error as Error).message 
     }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    await connectDB();
     const body = await request.json();
     const { day, time, subject, faculty, room, type } = body;
 
@@ -149,25 +140,24 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString()
     };
 
-    const newEntry = await db.insert(timetable)
-      .values(sanitizedData)
-      .returning();
+    const newEntry = await Timetable.create(sanitizedData);
 
-    return NextResponse.json(newEntry[0], { status: 201 });
+    return NextResponse.json(newEntry, { status: 201 });
   } catch (error) {
     console.error('POST error:', error);
     return NextResponse.json({ 
-      error: 'Internal server error: ' + error.message 
+      error: 'Internal server error: ' + (error as Error).message 
     }, { status: 500 });
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
+    await connectDB();
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
 
-    if (!id || isNaN(parseInt(id))) {
+    if (!id) {
       return NextResponse.json({ 
         error: "Valid ID is required",
         code: "INVALID_ID" 
@@ -175,12 +165,9 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check if record exists
-    const existing = await db.select()
-      .from(timetable)
-      .where(eq(timetable.id, parseInt(id)))
-      .limit(1);
+    const existing = await Timetable.findById(id);
 
-    if (existing.length === 0) {
+    if (!existing) {
       return NextResponse.json({ 
         error: 'Timetable entry not found',
         code: "NOT_FOUND" 
@@ -211,26 +198,24 @@ export async function PUT(request: NextRequest) {
     if (room !== undefined) updates.room = room.trim();
     if (type !== undefined) updates.type = type.trim().toLowerCase();
 
-    const updated = await db.update(timetable)
-      .set(updates)
-      .where(eq(timetable.id, parseInt(id)))
-      .returning();
+    const updated = await Timetable.findByIdAndUpdate(id, updates, { new: true });
 
-    return NextResponse.json(updated[0], { status: 200 });
+    return NextResponse.json(updated, { status: 200 });
   } catch (error) {
     console.error('PUT error:', error);
     return NextResponse.json({ 
-      error: 'Internal server error: ' + error 
+      error: 'Internal server error: ' + (error as Error).message 
     }, { status: 500 });
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
+    await connectDB();
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
 
-    if (!id || isNaN(parseInt(id))) {
+    if (!id) {
       return NextResponse.json({ 
         error: "Valid ID is required",
         code: "INVALID_ID" 
@@ -238,30 +223,25 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if record exists
-    const existing = await db.select()
-      .from(timetable)
-      .where(eq(timetable.id, parseInt(id)))
-      .limit(1);
+    const existing = await Timetable.findById(id);
 
-    if (existing.length === 0) {
+    if (!existing) {
       return NextResponse.json({ 
         error: 'Timetable entry not found',
         code: "NOT_FOUND" 
       }, { status: 404 });
     }
 
-    const deleted = await db.delete(timetable)
-      .where(eq(timetable.id, parseInt(id)))
-      .returning();
+    const deleted = await Timetable.findByIdAndDelete(id);
 
     return NextResponse.json({ 
       message: 'Timetable entry deleted successfully',
-      deletedEntry: deleted[0]
+      deletedEntry: deleted
     }, { status: 200 });
   } catch (error) {
     console.error('DELETE error:', error);
     return NextResponse.json({ 
-      error: 'Internal server error: ' + error.message 
+      error: 'Internal server error: ' + (error as Error).message 
     }, { status: 500 });
   }
 }

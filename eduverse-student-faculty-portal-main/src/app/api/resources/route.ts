@@ -1,35 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { resources } from '@/db/schema';
-import { eq, like, and, or, desc } from 'drizzle-orm';
+import connectDB from '@/db';
+import { Resource } from '@/db/schema';
 
 export async function GET(request: NextRequest) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
     // Single resource by ID
     if (id) {
-      if (!id || isNaN(parseInt(id))) {
+      if (!id) {
         return NextResponse.json({ 
           error: "Valid ID is required",
           code: "INVALID_ID" 
         }, { status: 400 });
       }
 
-      const resource = await db.select()
-        .from(resources)
-        .where(eq(resources.id, parseInt(id)))
-        .limit(1);
+      const resource = await Resource.findById(id);
 
-      if (resource.length === 0) {
+      if (!resource) {
         return NextResponse.json({ 
           error: 'Resource not found',
           code: 'RESOURCE_NOT_FOUND'
         }, { status: 404 });
       }
 
-      return NextResponse.json(resource[0], { status: 200 });
+      return NextResponse.json(resource, { status: 200 });
     }
 
     // List all resources with pagination, filtering, and search
@@ -40,45 +37,38 @@ export async function GET(request: NextRequest) {
     const subject = searchParams.get('subject');
     const department = searchParams.get('department');
 
-    let query = db.select().from(resources);
-
-    const conditions = [];
+    // Build filter query
+    const filter: any = {};
 
     // Search condition
     if (search) {
-      conditions.push(
-        or(
-          like(resources.title, `%${search}%`),
-          like(resources.subject, `%${search}%`)
-        )
-      );
+      filter.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { subject: { $regex: search, $options: 'i' } }
+      ];
     }
 
     // Filter by type
     if (type) {
-      conditions.push(eq(resources.type, type));
+      filter.type = type;
     }
 
     // Filter by subject
     if (subject) {
-      conditions.push(eq(resources.subject, subject));
+      filter.subject = subject;
     }
 
     // Filter by department
     if (department) {
-      conditions.push(eq(resources.department, department));
-    }
-
-    // Apply all conditions
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      filter.department = department;
     }
 
     // Sort by uploadDate descending (newest first) and apply pagination
-    const results = await query
-      .orderBy(desc(resources.uploadDate))
+    const results = await Resource.find(filter)
+      .sort({ uploadDate: -1 })
       .limit(limit)
-      .offset(offset);
+      .skip(offset)
+      .lean();
 
     return NextResponse.json(results, { status: 200 });
 
@@ -92,6 +82,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await connectDB();
     const body = await request.json();
     const { title, type, subject, uploadedBy, uploadDate, url, department } = body;
 
@@ -125,11 +116,9 @@ export async function POST(request: NextRequest) {
     };
 
     // Insert new resource
-    const newResource = await db.insert(resources)
-      .values(sanitizedData)
-      .returning();
+    const newResource = await Resource.create(sanitizedData);
 
-    return NextResponse.json(newResource[0], { status: 201 });
+    return NextResponse.json(newResource, { status: 201 });
 
   } catch (error) {
     console.error('POST error:', error);
@@ -141,11 +130,12 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
     // Validate ID
-    if (!id || isNaN(parseInt(id))) {
+    if (!id) {
       return NextResponse.json({ 
         error: "Valid ID is required",
         code: "INVALID_ID" 
@@ -153,12 +143,9 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check if resource exists
-    const existingResource = await db.select()
-      .from(resources)
-      .where(eq(resources.id, parseInt(id)))
-      .limit(1);
+    const existingResource = await Resource.findById(id);
 
-    if (existingResource.length === 0) {
+    if (!existingResource) {
       return NextResponse.json({ 
         error: 'Resource not found',
         code: 'RESOURCE_NOT_FOUND'
@@ -191,12 +178,9 @@ export async function PUT(request: NextRequest) {
     if (department !== undefined) updates.department = department.trim();
 
     // Update resource
-    const updatedResource = await db.update(resources)
-      .set(updates)
-      .where(eq(resources.id, parseInt(id)))
-      .returning();
+    const updatedResource = await Resource.findByIdAndUpdate(id, updates, { new: true });
 
-    return NextResponse.json(updatedResource[0], { status: 200 });
+    return NextResponse.json(updatedResource, { status: 200 });
 
   } catch (error) {
     console.error('PUT error:', error);
@@ -208,11 +192,12 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
     // Validate ID
-    if (!id || isNaN(parseInt(id))) {
+    if (!id) {
       return NextResponse.json({ 
         error: "Valid ID is required",
         code: "INVALID_ID" 
@@ -220,12 +205,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if resource exists
-    const existingResource = await db.select()
-      .from(resources)
-      .where(eq(resources.id, parseInt(id)))
-      .limit(1);
+    const existingResource = await Resource.findById(id);
 
-    if (existingResource.length === 0) {
+    if (!existingResource) {
       return NextResponse.json({ 
         error: 'Resource not found',
         code: 'RESOURCE_NOT_FOUND'
@@ -233,13 +215,11 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete resource
-    const deletedResource = await db.delete(resources)
-      .where(eq(resources.id, parseInt(id)))
-      .returning();
+    const deletedResource = await Resource.findByIdAndDelete(id);
 
     return NextResponse.json({ 
       message: 'Resource deleted successfully',
-      resource: deletedResource[0]
+      resource: deletedResource
     }, { status: 200 });
 
   } catch (error) {

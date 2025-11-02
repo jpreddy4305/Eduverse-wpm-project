@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -22,19 +23,32 @@ interface Notice {
 }
 
 export default function NoticesPage() {
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPriority, setFilterPriority] = useState('all');
   const [notices, setNotices] = useState<Notice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetchNotices();
-  }, []);
+    if (user) {
+      fetchNotices();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const fetchNotices = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/notices');
+      // For students, filter by department
+      let url = '/api/notices';
+      if (user?.role === 'student' && user.department) {
+        const params = new URLSearchParams({
+          department: user.department,
+        });
+        url = `/api/notices?${params.toString()}`;
+      }
+      
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to fetch notices');
       }
