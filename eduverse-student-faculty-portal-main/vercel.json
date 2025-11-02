@@ -3,9 +3,7 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install --legacy-peer-deps",
   "framework": "nextjs",
-  "regions": ["iad1"],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  "rootDirectory": "eduverse-student-faculty-portal-main",
+  "regions": ["iad1"]
 }
 
