@@ -5,11 +5,14 @@
     "scripts": {
         "dev": "next dev --turbopack",
         "dev:express": "NODE_ENV=development node server.js",
+        "dev:next": "next dev --turbopack",
         "build": "next build",
-        "start": "NODE_ENV=production node server.js",
-        "start:next": "next start",
-        "lint": "next lint"
+        "start": "next start",
+        "start:express": "NODE_ENV=production node server.js",
+        "lint": "next lint",
+        "typecheck": "tsc --noEmit"
     },
+
     "dependencies": {
         "@babel/parser": "^7.28.4",
         "@headlessui/react": "^2.2.9",
